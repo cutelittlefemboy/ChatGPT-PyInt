@@ -1,15 +1,19 @@
 import customtkinter
 import openai
 import threading
+import os
+
+class Request:
+    def __init__(self) -> None:
+        self.request_running = False
+        self.prompt = None
+        self.reply = None
+        self.invalid_key = False
 
 class App:
     
-    def __init__(self):   
-        
-        self.api_key = None        
-        self.is_running = True
-        self.current_prompt = None
-        self.current_reply = None
+    def __init__(self):
+        self.request = Request()
         
         customtkinter.set_appearance_mode("dark")
         customtkinter.set_default_color_theme("dark-blue")
@@ -68,56 +72,85 @@ class App:
         self.root.mainloop()
 
     def submit_prompt(self):
-        if self.api_key == None:
+        if self.request.request_running == True:
+            self.generate_popup("One request at a time!")
+            return
+        if openai.api_key == None:
             self.set_api_key()
         textbox_content = self.prompt_textbox.get("0.0", "end")
-        self.current_prompt=[{"role": "user", "content": textbox_content}]
-        
+        self.request.prompt=[{"role": "user", "content": textbox_content}]
+
         #Creates a thread that queries chatgpt and then periodically checks if a response was recieved
+        self.response_textbox.configure(state="normal")
+        self.response_textbox.delete("0.0", "end")
+        self.response_textbox.insert("0.0", "Waiting for response...")
+        self.response_textbox.configure(state="disabled")
+        
         thread = threading.Thread(target=self.get_response)
         thread.start()
-        self.root.after(5000, self.check_response)
+        self.root.after(2000, self.check_response)
+        
+    def get_response(self):
+        self.request.request_running = True
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=self.request.prompt
+            )
+        except Exception as e:
+            openai.api_key = None
+            self.request.invalid_key = True
+            self.request.reply = "Invalid API Key"
+            return
+        self.request.reply = response["choices"][0]["message"]["content"]
     
     def check_response(self):
-        if self.current_reply == None:
+        if self.request.reply == None:
             self.root.after(2000, self.check_response) #reschedule if no response
             return
+        self.request.request_running = False
         self.display_response()
-        
         
     def display_response(self):
         self.response_textbox.configure(state="normal")
-        self.response_textbox.insert("0.0", self.current_reply)
+        self.response_textbox.delete("0.0", "end")
+        self.response_textbox.insert("0.0", self.request.reply)
         self.response_textbox.configure(state="disabled")
+
         self.current_reply = None
-        
-    def get_response(self):
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=self.current_prompt
-        )
-        self.current_reply = response["choices"][0]["message"]["content"]
-        self.current_prompt = None
 
     def set_api_key(self):
         #Tries to read a file with the api key
-        try:
+        if os.path.exists("api_key.txt") and self.request.invalid_key:
+            os.remove("api_key.txt")
+        if os.path.exists("api_key.txt"):
             with open("api_key.txt", "r") as file:
                 content=file.read().strip("\n")
+                print(content)
                 openai.api_key = content
-                self.api_key = content
         #if it doesn't exist asks for the api key with a dialog
-        except Exception as e:
+        else:
             dialog = customtkinter.CTkInputDialog(text="Type your openAI API key:", title="API key")
             text = dialog.get_input()
-            self.api_key = text
             openai.api_key = text
             #and tries to create a file with the api key
             try:
                 with open("api_key.txt", "w") as file:
                     file.write(text)
             except Exception as e:
+                self.generate_popup("Cannot create apikey.txt. Not critical. Continuing...")
                 return
-        
+    
+    def generate_popup(self, message):
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        popup = customtkinter.CTkToplevel()
+        popup.resizable(False, False)
+        popup.geometry(f"200x100+{screen_width//2-100}+{screen_height//2-50}")
+        popup.title(message)
+        customtkinter.CTkLabel(popup, text=message, font=("Arial", 12)).pack(padx=5, pady=5)
+        customtkinter.CTkButton(popup, text="Ok", command=popup.destroy).pack(padx=5, pady=5)
+        popup.attributes("-topmost", True)
+
 main = App()
 main.run()
