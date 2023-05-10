@@ -120,7 +120,7 @@ class App:
         self.response_textbox.insert("0.0", self.request.reply)
         self.response_textbox.configure(state="disabled")
 
-        self.current_reply = None
+        self.request.reply = None
 
     def set_api_key(self):
         #Tries to read a file with the api key
