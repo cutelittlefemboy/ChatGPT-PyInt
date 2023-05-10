@@ -24,7 +24,7 @@ class App:
         
         self.root.title("ChatGPT GUI Interface")
         try:
-            self.root.iconbitmap("app_logo.ico")
+            self.root.iconbitmap("assets/app_logo.ico")
         except Exception as e:
             print("Icon not found:\n", e)
         
@@ -97,7 +97,10 @@ class App:
                 model="gpt-3.5-turbo",
                 messages=self.request.prompt
             )
-        except Exception as e:
+        except openai.error.RateLimitError:
+            self.request.reply = "Rate limit reached. Only 3 request per minute. Please wait."
+            return
+        except openai.error.AuthenticationError:
             openai.api_key = None
             self.request.invalid_key = True
             self.request.reply = "Invalid API Key"
@@ -126,7 +129,6 @@ class App:
         if os.path.exists("api_key.txt"):
             with open("api_key.txt", "r") as file:
                 content=file.read().strip("\n")
-                print(content)
                 openai.api_key = content
         #if it doesn't exist asks for the api key with a dialog
         else:
